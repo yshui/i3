@@ -28,6 +28,7 @@ xcb_randr_get_output_primary_reply_t *primary;
 struct outputs_head outputs = TAILQ_HEAD_INITIALIZER(outputs);
 
 static bool randr_disabled = false;
+static bool has_randr_1_5 = false;
 
 /*
  * Get a specific output by its internal X11 id. Used by randr_query_outputs
@@ -609,6 +610,45 @@ static bool __randr_query_outputs(void) {
     if (randr_disabled)
         return true;
 
+#if XCB_RANDR_MINOR_VERSION >= 5
+    /* RandR 1.5 available at compile-time, i.e. libxcb is new enough */
+    if (has_randr_1_5) {
+        /* RandR 1.5 available at run-time (supported by the server and not
+         * disabled by the user) */
+        DLOG("RandR 1.5 available, querying monitors\n");
+        xcb_generic_error_t *err;
+        xcb_randr_get_monitors_reply_t *monitors =
+            xcb_randr_get_monitors_reply(
+                conn, xcb_randr_get_monitors(conn, root, true), &err);
+        if (err != NULL) {
+            ELOG("Could not get RandR monitors: X11 error code %d\n", err->error_code);
+        }
+        DLOG("%d RandR monitors found (timestamp %d)\n",
+             xcb_randr_get_monitors_monitors_length(monitors),
+             monitors->timestamp);
+        xcb_randr_monitor_info_iterator_t iter;
+        for (iter = xcb_randr_get_monitors_monitors_iterator(monitors);
+             iter.rem;
+             xcb_randr_monitor_info_next(&iter)) {
+            xcb_randr_monitor_info_t *monitor_info = iter.data;
+            xcb_get_atom_name_reply_t *atom_reply =
+                xcb_get_atom_name_reply(
+                    conn, xcb_get_atom_name(conn, monitor_info->name), &err);
+            if (err != NULL) {
+                ELOG("Could not get RandR monitor name: X11 error code %d\n", err->error_code);
+                continue;
+            }
+            DLOG("name %.*s, x %d, y %d, width %d px, height %d px, width %d mm, height %d mm, primary %d, automatic %d\n",
+                 xcb_get_atom_name_name_length(atom_reply),
+                 xcb_get_atom_name_name(atom_reply),
+                 monitor_info->x, monitor_info->y, monitor_info->width, monitor_info->height,
+                 monitor_info->width_in_millimeters, monitor_info->height_in_millimeters,
+                 monitor_info->primary, monitor_info->automatic);
+            free(atom_reply);
+        }
+    }
+#endif
+
     /* Get screen resources (primary output, crtcs, outputs, modes) */
     rcookie = xcb_randr_get_screen_resources_current(conn, root);
     pcookie = xcb_randr_get_output_primary(conn, root);
@@ -861,8 +901,24 @@ void randr_init(int *event_base) {
     if (!extreply->present) {
         disable_randr(conn);
         return;
-    } else
-        randr_query_outputs();
+    }
+
+    xcb_generic_error_t *err;
+    xcb_randr_query_version_reply_t *randr_version =
+        xcb_randr_query_version_reply(
+            conn, xcb_randr_query_version(conn, XCB_RANDR_MAJOR_VERSION, XCB_RANDR_MINOR_VERSION), &err);
+    if (err != NULL) {
+        ELOG("Could not query RandR version: X11 error code %d\n", err->error_code);
+        disable_randr(conn);
+        return;
+    }
+
+    has_randr_1_5 = (randr_version->major_version >= 1) &&
+                    (randr_version->minor_version >= 5);
+
+    // TODO: flag to overwrite has_randr_1_5
+
+    randr_query_outputs();
 
     if (event_base != NULL)
         *event_base = extreply->first_event;
