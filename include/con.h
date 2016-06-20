@@ -62,6 +62,12 @@ bool con_is_split(Con *con);
 bool con_is_hidden(Con *con);
 
 /**
+ * Return whether a container is maxmized horizontally/vertically.
+ *
+ */
+bool con_is_maximized(Con *con, orientation_t o);
+
+/**
  * Returns whether the container or any of its children is sticky.
  *
  */

@@ -315,6 +315,44 @@ bool con_is_hidden(Con *con) {
     return false;
 }
 
+bool con_is_maximized(Con *con, orientation_t o) {
+    Con *current = con;
+    layout_t l;
+
+    /* Fullscreen con should be considered maximized*/
+    if (con->fullscreen_mode != CF_NONE)
+        return true;
+
+    switch (o) {
+        case HORIZ:
+            l = L_SPLITH;
+            break;
+        case VERT:
+            l = L_SPLITV;
+            break;
+        default:
+            return false;
+    }
+
+    /* go through all parents, if anyone of them is in split container
+     * with more than 1 member, return false. */
+    while (current != NULL && current->type != CT_WORKSPACE) {
+        Con *parent = current->parent;
+        if (parent && parent->layout == l) {
+            if (TAILQ_FIRST(&parent->nodes_head) != TAILQ_LAST(&parent->nodes_head, nodes_head))
+                return false;
+        }
+
+        /* Should not tag floating container as maximized */
+        if (parent && parent->type == CT_FLOATING_CON)
+            return false;
+
+        current = parent;
+    }
+
+    return true;
+}
+
 /*
  * Returns whether the container or any of its children is sticky.
  *
