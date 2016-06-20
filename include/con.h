@@ -55,13 +55,6 @@ bool con_has_managed_window(Con *con);
 bool con_is_split(Con *con);
 
 /**
- * This will only return true for containers which have some parent with
- * a tabbed / stacked parent of which they are not the currently focused child.
- *
- */
-bool con_is_hidden(Con *con);
-
-/**
  * Return whether a container is maxmized horizontally/vertically.
  *
  */
